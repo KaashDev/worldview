@@ -1,0 +1,1711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WORLDVIEW // GEO-INTELLIGENCE TERMINAL</title>
+
+<!-- CesiumJS from official CDN -->
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.118/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+<!-- Fonts: distinctive technical/military typography -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700;800&family=Major+Mono+Display&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-void: #050608;
+    --bg-panel: rgba(8, 10, 14, 0.82);
+    --bg-panel-solid: #0a0d12;
+    --border-dim: rgba(120, 255, 180, 0.12);
+    --border-bright: rgba(120, 255, 180, 0.45);
+    --accent: #6effb5;
+    --accent-dim: #2c8a5c;
+    --warn: #ff8a3c;
+    --danger: #ff3b5c;
+    --text-primary: #d4f5e2;
+    --text-secondary: #6b8a78;
+    --text-tertiary: #3d5448;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --display: 'Major Mono Display', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg-void);
+    color: var(--text-primary);
+    font-family: var(--mono);
+    overflow: hidden;
+    cursor: crosshair;
+  }
+
+  #cesiumContainer {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* Cesium UI overrides */
+  .cesium-viewer-bottom { display: none !important; }
+  .cesium-widget-credits { display: none !important; }
+
+  /* ============ SHADER OVERLAYS ============ */
+  .fx-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    mix-blend-mode: normal;
+  }
+  .fx-overlay.active { opacity: 1; }
+
+  /* CRT effect */
+  .fx-crt {
+    background:
+      repeating-linear-gradient(0deg,
+        rgba(0,0,0,0.35) 0px,
+        rgba(0,0,0,0.35) 1px,
+        transparent 2px,
+        transparent 3px),
+      radial-gradient(ellipse at center,
+        transparent 60%,
+        rgba(0,0,0,0.6) 100%);
+    mix-blend-mode: multiply;
+  }
+  .fx-crt::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg,
+      transparent 0px,
+      transparent 4px,
+      rgba(110, 255, 181, 0.04) 4px,
+      rgba(110, 255, 181, 0.04) 5px);
+    animation: scanlines 8s linear infinite;
+  }
+  .fx-crt::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
+    opacity: 0.08;
+    mix-blend-mode: overlay;
+    animation: noise 0.2s steps(2) infinite;
+  }
+  @keyframes scanlines {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(8px); }
+  }
+  @keyframes noise {
+    0%,100% { transform: translate(0,0); }
+    25% { transform: translate(-2%, 1%); }
+    50% { transform: translate(1%, -1%); }
+    75% { transform: translate(-1%, 2%); }
+  }
+
+  /* Night vision */
+  .fx-nv {
+    background:
+      radial-gradient(ellipse at center,
+        rgba(120,255,140,0.18) 0%,
+        rgba(20,80,40,0.55) 75%,
+        rgba(0,20,8,0.95) 100%);
+    backdrop-filter: brightness(1.1) contrast(1.4) saturate(0) sepia(1) hue-rotate(60deg);
+    -webkit-backdrop-filter: brightness(1.1) contrast(1.4) saturate(0) sepia(1) hue-rotate(60deg);
+  }
+  .fx-nv::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='1' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.6'/></svg>");
+    opacity: 0.18;
+    mix-blend-mode: screen;
+    animation: noise 0.15s steps(2) infinite;
+  }
+  .fx-nv::after {
+    content: "";
+    position: absolute; inset: 0;
+    box-shadow: inset 0 0 200px 80px rgba(0,0,0,0.7);
+  }
+
+  /* FLIR thermal */
+  .fx-flir {
+    backdrop-filter: grayscale(1) contrast(1.6) brightness(0.85);
+    -webkit-backdrop-filter: grayscale(1) contrast(1.6) brightness(0.85);
+    background:
+      linear-gradient(180deg,
+        rgba(80, 0, 90, 0.25) 0%,
+        rgba(160, 30, 0, 0.20) 35%,
+        rgba(255, 140, 0, 0.18) 65%,
+        rgba(255, 240, 180, 0.15) 100%);
+    mix-blend-mode: screen;
+  }
+  .fx-flir::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg,
+      transparent 0,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 3px);
+  }
+
+  /* ============ SIDEBAR ============ */
+  .sidebar {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    bottom: 16px;
+    width: 320px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    font-size: 11px;
+    overflow: hidden;
+  }
+  .sidebar::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .brand {
+    padding: 18px 18px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    position: relative;
+  }
+  .brand-name {
+    font-family: var(--display);
+    font-size: 18px;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    text-shadow: 0 0 12px rgba(110, 255, 181, 0.4);
+  }
+  .brand-sub {
+    font-size: 9px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.3em;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+  .brand-status {
+    position: absolute;
+    top: 18px; right: 18px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+  }
+  .pulse {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .sidebar-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+  .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+  .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-scroll::-webkit-scrollbar-thumb { background: var(--accent-dim); }
+
+  .section {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-dim);
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .section-title {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::before {
+    content: "▸";
+    color: var(--accent);
+    font-size: 10px;
+  }
+  .section-count {
+    font-size: 9px;
+    color: var(--accent);
+    background: rgba(110, 255, 181, 0.08);
+    padding: 2px 6px;
+    border: 1px solid var(--border-dim);
+  }
+
+  /* Buttons */
+  .btn-grid {
+    display: grid;
+    gap: 6px;
+  }
+  .btn-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .btn-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+
+  .btn {
+    background: rgba(110, 255, 181, 0.03);
+    border: 1px solid var(--border-dim);
+    color: var(--text-primary);
+    padding: 9px 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    position: relative;
+  }
+  .btn:hover {
+    border-color: var(--border-bright);
+    background: rgba(110, 255, 181, 0.08);
+    color: var(--accent);
+  }
+  .btn.active {
+    border-color: var(--accent);
+    background: rgba(110, 255, 181, 0.15);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(110, 255, 181, 0.15) inset;
+  }
+  .btn.warn.active {
+    border-color: var(--warn);
+    background: rgba(255, 138, 60, 0.15);
+    color: var(--warn);
+    box-shadow: 0 0 12px rgba(255, 138, 60, 0.15) inset;
+  }
+  .btn-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+    flex-shrink: 0;
+  }
+  .btn.active .btn-dot {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .btn.warn.active .btn-dot {
+    background: var(--warn);
+    box-shadow: 0 0 6px var(--warn);
+  }
+
+  /* Toggles */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    cursor: pointer;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    transition: color 0.15s;
+  }
+  .toggle-row:hover { color: var(--text-primary); }
+  .toggle-row.on { color: var(--accent); }
+  .toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .toggle-switch {
+    width: 28px;
+    height: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border-dim);
+    position: relative;
+    transition: all 0.2s;
+  }
+  .toggle-switch::after {
+    content: "";
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 10px; height: 10px;
+    background: var(--text-tertiary);
+    transition: all 0.2s;
+  }
+  .toggle-row.on .toggle-switch {
+    background: rgba(110,255,181,0.15);
+    border-color: var(--accent);
+  }
+  .toggle-row.on .toggle-switch::after {
+    left: 15px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* Filter pills */
+  .pills {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+  }
+  .pill {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--border-dim);
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .pill:hover { color: var(--text-primary); }
+  .pill.active {
+    background: rgba(110,255,181,0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Telemetry/footer */
+  .telemetry {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border-dim);
+    background: rgba(0,0,0,0.3);
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.15em;
+  }
+  .tel-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .tel-row:last-child { margin-bottom: 0; }
+  .tel-val { color: var(--accent); }
+
+  /* HUD elements */
+  .hud-corners {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 60;
+  }
+  .corner {
+    position: absolute;
+    width: 24px; height: 24px;
+    border: 1px solid var(--accent);
+    opacity: 0.5;
+  }
+  .corner.tl { top: 12px; left: 360px; border-right: none; border-bottom: none; }
+  .corner.tr { top: 12px; right: 12px; border-left: none; border-bottom: none; }
+  .corner.bl { bottom: 12px; left: 360px; border-right: none; border-top: none; }
+  .corner.br { bottom: 12px; right: 12px; border-left: none; border-top: none; }
+
+  /* Right-side info panel */
+  .info-panel {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 280px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 100;
+    padding: 14px 18px;
+    font-size: 10px;
+  }
+  .info-title {
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .clock {
+    font-family: var(--display);
+    font-size: 22px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 10px rgba(110,255,181,0.3);
+  }
+  .info-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 12px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .info-grid span:nth-child(odd) { color: var(--text-tertiary); }
+  .info-grid span:nth-child(even) { color: var(--text-primary); text-align: right; }
+
+  /* CCTV feed window */
+  .cctv-window {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    width: 280px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 100;
+    padding: 12px;
+    display: none;
+  }
+  .cctv-window.active { display: block; }
+  .cctv-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .cctv-rec {
+    color: var(--danger);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .cctv-rec::before {
+    content: "";
+    width: 6px; height: 6px;
+    background: var(--danger);
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+  }
+  .cctv-feed {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--border-dim);
+  }
+  /* Blow up the iframe larger than its container so YouTube's
+     title bar (top ~60px) and bottom progress strip get clipped
+     off-screen by overflow:hidden on .cctv-feed */
+  .cctv-feed iframe {
+    position: absolute;
+    top: -60px;
+    left: -2px;
+    width: calc(100% + 4px);
+    height: calc(100% + 130px);
+    border: none;
+    pointer-events: none; /* block clicks into YouTube UI */
+  }
+  .cctv-feed video, .cctv-feed img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    border: none;
+  }
+  .cctv-feed .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    background: repeating-linear-gradient(45deg, #0a0a0a, #0a0a0a 10px, #111 10px, #111 20px);
+  }
+  .cctv-meta {
+    margin-top: 8px;
+    font-size: 9px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.15em;
+  }
+  .cctv-close {
+    background: none;
+    border: 1px solid var(--border-dim);
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    cursor: pointer;
+    letter-spacing: 0.2em;
+  }
+  .cctv-close:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Loader */
+  .loader {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-void);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 18px;
+    transition: opacity 0.6s;
+  }
+  .loader.hide { opacity: 0; pointer-events: none; }
+  .loader-name {
+    font-family: var(--display);
+    font-size: 28px;
+    color: var(--accent);
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 20px rgba(110,255,181,0.5);
+  }
+  .loader-bar {
+    width: 240px;
+    height: 2px;
+    background: rgba(110,255,181,0.1);
+    overflow: hidden;
+    position: relative;
+  }
+  .loader-bar::after {
+    content: "";
+    position: absolute;
+    height: 100%;
+    width: 40%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: load 1.4s ease-in-out infinite;
+  }
+  @keyframes load {
+    0% { left: -40%; }
+    100% { left: 100%; }
+  }
+  .loader-msg {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  /* Toast notifications */
+  .toast-stack {
+    position: absolute;
+    bottom: 16px;
+    left: 360px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 360px;
+  }
+  .toast {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    border-left: 2px solid var(--accent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 8px 12px;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-primary);
+    animation: toastIn 0.3s ease;
+  }
+  .toast.warn { border-left-color: var(--warn); }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Coordinates ticker */
+  .coord-ticker {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 70;
+    font-size: 9px;
+    color: var(--text-secondary);
+    letter-spacing: 0.3em;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-dim);
+    padding: 4px 14px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .coord-ticker .v { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- Loader -->
+<div class="loader" id="loader">
+  <div class="loader-name">WORLDVIEW</div>
+  <div class="loader-bar"></div>
+  <div class="loader-msg" id="loaderMsg">INITIALIZING GLOBE</div>
+</div>
+
+<!-- Cesium globe -->
+<div id="cesiumContainer"></div>
+
+<!-- Shader overlays -->
+<div class="fx-overlay fx-crt" id="fxCrt"></div>
+<div class="fx-overlay fx-nv" id="fxNv"></div>
+<div class="fx-overlay fx-flir" id="fxFlir"></div>
+
+<!-- HUD corners -->
+<div class="hud-corners">
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-name">WORLDVIEW</div>
+    <div class="brand-sub">GEO-INTEL // v1.0</div>
+    <div class="brand-status"><span class="pulse"></span>LIVE</div>
+  </div>
+
+  <div class="sidebar-scroll">
+
+    <!-- Camera presets -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">CAMERA PRESETS</div>
+      </div>
+      <div class="btn-grid" id="presetGrid"></div>
+    </div>
+
+    <!-- Visual shaders -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">VISUAL OVERLAYS</div>
+      </div>
+      <div class="btn-grid">
+        <button class="btn shader-btn" data-shader="none">
+          <span>STANDARD</span><span class="btn-dot"></span>
+        </button>
+        <button class="btn shader-btn" data-shader="crt">
+          <span>CRT // SCANLINES</span><span class="btn-dot"></span>
+        </button>
+        <button class="btn shader-btn" data-shader="nv">
+          <span>NIGHT VISION</span><span class="btn-dot"></span>
+        </button>
+        <button class="btn shader-btn" data-shader="flir">
+          <span>FLIR // THERMAL</span><span class="btn-dot"></span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Data layers -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">DATA LAYERS</div>
+      </div>
+
+      <div class="toggle-row" data-layer="satellites">
+        <div class="toggle-label"><span class="btn-dot"></span>SATELLITE NETWORK</div>
+        <div class="toggle-switch"></div>
+      </div>
+      <div class="pills" id="satFilter">
+        <div class="pill active" data-sat-mode="sparse">SPARSE</div>
+        <div class="pill" data-sat-mode="full">FULL</div>
+      </div>
+
+      <div class="toggle-row" data-layer="aviation" style="margin-top: 10px;">
+        <div class="toggle-label"><span class="btn-dot"></span>AVIATION TRACKING</div>
+        <div class="toggle-switch"></div>
+      </div>
+      <div class="pills" id="aviFilter">
+        <div class="pill active" data-avi-mode="all">ALL</div>
+        <div class="pill" data-avi-mode="commercial">COMMERCIAL</div>
+        <div class="pill" data-avi-mode="military">MILITARY</div>
+      </div>
+
+      <div class="toggle-row" data-layer="traffic" style="margin-top: 10px;">
+        <div class="toggle-label"><span class="btn-dot"></span>STREET TRAFFIC SIM</div>
+        <div class="toggle-switch"></div>
+      </div>
+    </div>
+
+    <!-- CCTV -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">CCTV FEEDS</div>
+        <div class="section-count" id="cctvCount">0</div>
+      </div>
+      <div class="btn-grid" id="cctvGrid"></div>
+    </div>
+
+  </div>
+
+  <div class="telemetry">
+    <div class="tel-row"><span>FPS</span><span class="tel-val" id="fpsVal">--</span></div>
+    <div class="tel-row"><span>ENTITIES</span><span class="tel-val" id="entityVal">0</span></div>
+    <div class="tel-row"><span>CONNECTION</span><span class="tel-val" id="connVal">SECURE</span></div>
+  </div>
+</aside>
+
+<!-- Right-side info panel -->
+<aside class="info-panel">
+  <div class="info-title">SYSTEM TIME // UTC</div>
+  <div class="clock" id="clock">00:00:00</div>
+  <div class="info-grid">
+    <span>LAT</span><span id="camLat">0.00</span>
+    <span>LON</span><span id="camLon">0.00</span>
+    <span>ALT</span><span id="camAlt">0 km</span>
+    <span>HEADING</span><span id="camHead">000°</span>
+  </div>
+</aside>
+
+<!-- CCTV window -->
+<aside class="cctv-window" id="cctvWindow">
+  <div class="cctv-head">
+    <span id="cctvLabel">FEED</span>
+    <span class="cctv-rec">REC</span>
+    <button class="cctv-close" id="cctvClose">CLOSE</button>
+  </div>
+  <div class="cctv-feed" id="cctvFeed">
+    <div class="placeholder">SIGNAL ACQUIRING</div>
+  </div>
+  <div class="cctv-meta" id="cctvMeta">--</div>
+</aside>
+
+<!-- Coordinate ticker -->
+<div class="coord-ticker" id="coordTicker">
+  <span class="v">--</span> // <span class="v">--</span>
+</div>
+
+<!-- Toast stack -->
+<div class="toast-stack" id="toastStack"></div>
+
+<script type="module">
+"use strict";
+
+/* ==========================================================
+   WORLDVIEW :: CONFIGURATION
+   ========================================================== */
+
+// Cesium Ion access token. Replace with your own from https://cesium.com/ion/
+// The default token below is the publicly distributed Cesium demo token; it
+// works but is rate-limited and not recommended for production.
+const CESIUM_ION_TOKEN = window.CESIUM_ION_TOKEN || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlNWVhZTI3ZC0xOTRiLTRlMDItOTEzZS0zZWY2YjE0OGVhMTQiLCJpZCI6NDIzOTM0LCJpYXQiOjE3NzcyNDg1Nzl9.eNZ1PmcYfonlUZERedgqY7dDSrs4WK5v--VjB7lx_Fo';
+
+Cesium.Ion.defaultAccessToken = CESIUM_ION_TOKEN;
+
+// Camera presets — global landmarks. Coordinates are [lon, lat, height].
+const CAMERA_PRESETS = [
+  { id: 'nyc',    name: 'NEW YORK',    pos: [-74.0060, 40.7128, 1500],  heading: 0,   pitch: -35 },
+  { id: 'tokyo',  name: 'TOKYO',       pos: [139.6917, 35.6895, 1800],  heading: 30,  pitch: -30 },
+  { id: 'paris',  name: 'PARIS',       pos: [2.2945, 48.8584, 900],     heading: 45,  pitch: -25 },
+  { id: 'dubai',  name: 'DUBAI',       pos: [55.2708, 25.2048, 2200],   heading: 0,   pitch: -35 },
+  { id: 'rio',    name: 'RIO',         pos: [-43.2105, -22.9519, 1400], heading: 90,  pitch: -30 },
+  { id: 'syd',    name: 'SYDNEY',      pos: [151.2153, -33.8568, 1200], heading: 0,   pitch: -30 },
+  { id: 'hkg',    name: 'HONG KONG',   pos: [114.1694, 22.3193, 1500],  heading: 0,   pitch: -30 },
+  { id: 'lon',    name: 'LONDON',      pos: [-0.1276, 51.5074, 1400],   heading: 0,   pitch: -32 },
+  { id: 'sfo',    name: 'SAN FRAN',    pos: [-122.4194, 37.7749, 1600], heading: 0,   pitch: -32 },
+];
+
+// CCTV preset locations. Replace `feedUrl` values with real public stream URLs.
+// You can use HLS streams (.m3u8), MJPEG endpoints, or YouTube embed URLs.
+// YouTube params explained:
+//   autoplay=1 mute=1     — required for autoplay in modern browsers
+//   controls=0            — hide play/pause/timeline
+//   modestbranding=1      — minimize YouTube logo
+//   rel=0                 — no related videos at end
+//   iv_load_policy=3      — disable annotations
+//   disablekb=1           — disable keyboard
+//   fs=0                  — hide fullscreen button
+//   playsinline=1         — inline on mobile
+const YT_PARAMS = 'autoplay=1&mute=1&controls=0&modestbranding=1&rel=0&iv_load_policy=3&disablekb=1&fs=0&playsinline=1&loop=1';
+
+const CCTV_FEEDS = [
+  { id: 'times-sq', label: 'TIMES SQUARE', pos: [-73.9857, 40.7589, 30],
+    feedUrl: `https://www.youtube.com/embed/rnXIjl_Rzy4?${YT_PARAMS}` },
+  { id: 'shibuya',  label: 'SHIBUYA',      pos: [139.7006, 35.6595, 30],
+    feedUrl: `https://www.youtube.com/embed/dfVK7ld38Ys?${YT_PARAMS}` },
+  { id: 'abbey-rd', label: 'ABBEY ROAD',   pos: [-0.1781, 51.5320, 25],
+    feedUrl: `https://www.youtube.com/embed/M3EYAY2MftI?${YT_PARAMS}` },
+];
+
+/* ==========================================================
+   WORLDVIEW :: UTILITIES
+   ========================================================== */
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+const log = {
+  info: (m)  => toast(m, 'info'),
+  warn: (m)  => toast(m, 'warn'),
+  error:(m)  => toast(m, 'error'),
+};
+
+function toast(msg, kind = 'info', dur = 3500) {
+  const el = document.createElement('div');
+  el.className = `toast ${kind}`;
+  el.textContent = `// ${msg}`;
+  $('#toastStack').appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .3s';
+    setTimeout(() => el.remove(), 300);
+  }, dur);
+}
+
+function setLoaderMsg(m) { $('#loaderMsg').textContent = m; }
+function hideLoader()    { $('#loader').classList.add('hide'); }
+
+/* ==========================================================
+   WORLDVIEW :: CESIUM BOOTSTRAP
+   ========================================================== */
+
+let viewer;
+
+async function initGlobe() {
+  setLoaderMsg('BOOTING CESIUM ENGINE');
+
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    terrainProvider: undefined,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    timeline: false,
+    animation: false,
+    navigationHelpButton: false,
+    fullscreenButton: false,
+    selectionIndicator: false,
+    infoBox: false,
+    skyBox: false,
+    skyAtmosphere: new Cesium.SkyAtmosphere(),
+    requestRenderMode: false,
+  });
+
+  // Strip default imagery so Google 3D Tiles takes over
+  viewer.imageryLayers.removeAll();
+  viewer.scene.globe.show = true;
+  viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#050608');
+  viewer.scene.backgroundColor = Cesium.Color.fromCssColorString('#050608');
+  viewer.scene.fog.enabled = true;
+  viewer.scene.fog.density = 0.0001;
+  viewer.scene.skyAtmosphere.show = true;
+
+  // Performance tuning. In Cesium >=1.100 `fxaa` is a read-only getter
+  // returning the stage object; toggle via its `.enabled` property.
+  if (viewer.scene.postProcessStages.fxaa) {
+    viewer.scene.postProcessStages.fxaa.enabled = true;
+  }
+  viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 1.5);
+
+  setLoaderMsg('REQUESTING GOOGLE 3D TILES');
+
+  try {
+    // Cesium asset 2275207 is Google's Photorealistic 3D Tiles
+    const tileset = await Cesium.createGooglePhotorealistic3DTileset();
+    viewer.scene.primitives.add(tileset);
+    log.info('GOOGLE 3D TILES ONLINE');
+  } catch (err) {
+    console.error('[3DTiles] failed', err);
+    log.warn('3D TILES UNAVAILABLE — FALLING BACK TO IMAGERY');
+    // Fallback: stock Cesium imagery so the app still works
+    try {
+      viewer.imageryLayers.addImageryProvider(
+        await Cesium.IonImageryProvider.fromAssetId(3)
+      );
+    } catch (e2) {
+      console.error('[Fallback imagery] failed', e2);
+    }
+  }
+
+  // Initial camera pose
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(-30, 25, 12_000_000),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-90), roll: 0 },
+  });
+
+  // Click handler for entity inspection
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  handler.setInputAction((click) => {
+    const picked = viewer.scene.pick(click.position);
+    if (Cesium.defined(picked) && picked.id && picked.id._meta) {
+      log.info(`SELECTED: ${picked.id._meta.label || picked.id.id}`);
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
+
+function flyToPreset(p) {
+  if (!viewer) return;
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(p.pos[0], p.pos[1], p.pos[2]),
+    orientation: {
+      heading: Cesium.Math.toRadians(p.heading),
+      pitch: Cesium.Math.toRadians(p.pitch),
+      roll: 0,
+    },
+    duration: 2.4,
+  });
+  log.info(`FLY-TO :: ${p.name}`);
+}
+
+/* ==========================================================
+   WORLDVIEW :: SHADER OVERLAYS
+   ========================================================== */
+
+const SHADERS = ['none', 'crt', 'nv', 'flir'];
+
+function setShader(name) {
+  SHADERS.forEach(s => {
+    const el = document.getElementById(`fx${s.charAt(0).toUpperCase() + s.slice(1)}`);
+    if (el) el.classList.remove('active');
+  });
+  if (name !== 'none') {
+    const map = { crt: 'fxCrt', nv: 'fxNv', flir: 'fxFlir' };
+    const el = document.getElementById(map[name]);
+    if (el) el.classList.add('active');
+  }
+  $$('.shader-btn').forEach(b => b.classList.toggle('active', b.dataset.shader === name));
+  log.info(`SHADER :: ${name.toUpperCase()}`);
+}
+
+/* ==========================================================
+   WORLDVIEW :: SATELLITE LAYER
+   ==========================================================
+   Renders satellite positions as orbital paths.
+
+   In production, fetch TLE data from CelesTrak:
+     https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json
+   Then propagate orbits with satellite.js. CORS-friendly.
+
+   Here we generate plausible orbital data so the layer renders without
+   external dependencies. The interface (loadSatellites, render) is
+   designed so swapping in real TLE propagation is a localized change.
+   ========================================================== */
+
+const SatelliteLayer = (() => {
+  let entities = [];
+  let mode = 'sparse';
+  let visible = false;
+  let updateHandle = null;
+
+  // Generate synthetic satellites in plausible orbital shells.
+  function generateSyntheticSats(count) {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      // Inclination, RAAN, mean anomaly
+      const inc = (Math.random() * 100 + 30) * Math.PI / 180;
+      const raan = Math.random() * 2 * Math.PI;
+      const ma   = Math.random() * 2 * Math.PI;
+      // Altitude shells: LEO 400-2000km, MEO 5-20k, GEO 35786
+      const r = Math.random();
+      const altitude = r < 0.7 ? 400e3 + Math.random() * 1600e3
+                     : r < 0.95 ? 5e6 + Math.random() * 15e6
+                     : 35_786e3;
+      const period = 2 * Math.PI * Math.sqrt(
+        Math.pow(6_371_000 + altitude, 3) / 3.986e14
+      );
+      out.push({
+        id: `SAT-${String(i).padStart(4, '0')}`,
+        inc, raan, ma, altitude, period,
+        speed: 2 * Math.PI / period,
+      });
+    }
+    return out;
+  }
+
+  let sats = [];
+
+  function positionAt(s, t) {
+    const angle = s.ma + s.speed * t;
+    const r = 6_371_000 + s.altitude;
+    // Orbital plane coords
+    const xo = r * Math.cos(angle);
+    const yo = r * Math.sin(angle);
+    // Rotate by inclination
+    const x1 = xo;
+    const y1 = yo * Math.cos(s.inc);
+    const z1 = yo * Math.sin(s.inc);
+    // Rotate by RAAN
+    const x = x1 * Math.cos(s.raan) - y1 * Math.sin(s.raan);
+    const y = x1 * Math.sin(s.raan) + y1 * Math.cos(s.raan);
+    const z = z1;
+    return new Cesium.Cartesian3(x, y, z);
+  }
+
+  function clear() {
+    entities.forEach(e => viewer.entities.remove(e));
+    entities = [];
+  }
+
+  function build() {
+    clear();
+    if (!visible) return;
+    const count = mode === 'full' ? 600 : 80;
+    sats = generateSyntheticSats(count);
+
+    sats.forEach(s => {
+      const pos = new Cesium.CallbackProperty((time, result) => {
+        const t = Cesium.JulianDate.secondsDifference(time, viewer.clock.startTime);
+        return positionAt(s, t);
+      }, false);
+
+      const ent = viewer.entities.add({
+        id: s.id,
+        position: pos,
+        point: {
+          pixelSize: 4,
+          color: Cesium.Color.fromCssColorString('#6effb5'),
+          outlineColor: Cesium.Color.fromCssColorString('#6effb5').withAlpha(0.4),
+          outlineWidth: 1,
+        },
+      });
+      ent._meta = { label: `SATELLITE ${s.id}`, type: 'satellite' };
+      entities.push(ent);
+    });
+
+    State.entityCount.satellites = entities.length;
+    updateEntityCount();
+  }
+
+  return {
+    setVisible(v) { visible = v; build(); },
+    setMode(m) { mode = m; if (visible) build(); },
+    isVisible() { return visible; },
+    count() { return entities.length; },
+  };
+})();
+
+/* ==========================================================
+   WORLDVIEW :: AVIATION LAYER
+   ==========================================================
+   Real source: https://opensky-network.org/api/states/all
+   Returns ~10k aircraft worldwide. CORS-friendly anonymous endpoint.
+   For military isolation: ADS-B Exchange (https://www.adsbexchange.com/data/)
+   requires API key — not embedded here.
+
+   This implementation tries the OpenSky public endpoint, and falls back
+   to a synthetic flight generator if blocked or rate-limited.
+   ========================================================== */
+
+const AviationLayer = (() => {
+  let entities = [];
+  let visible = false;
+  let mode = 'all';
+  let pollHandle = null;
+
+  // Heuristic to flag potential military aircraft from callsigns / icao24.
+  // Real ADS-B Exchange data has a `mil` boolean — replace this when wiring.
+  const MIL_PREFIXES = ['RCH', 'CNV', 'PAT', 'BLUE', 'NAVY', 'ARMY', 'AAC', 'HAWK', 'KING'];
+  function isMilitary(callsign) {
+    if (!callsign) return false;
+    const c = callsign.trim().toUpperCase();
+    return MIL_PREFIXES.some(p => c.startsWith(p));
+  }
+
+  async function fetchOpenSky() {
+    const url = 'https://opensky-network.org/api/states/all';
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return (data.states || []).map(s => ({
+        icao24: s[0], callsign: (s[1] || '').trim(),
+        lon: s[5], lat: s[6], alt: s[7],
+        velocity: s[9], heading: s[10],
+        military: isMilitary(s[1]),
+      })).filter(a => a.lon != null && a.lat != null);
+    } catch (e) {
+      clearTimeout(t);
+      throw e;
+    }
+  }
+
+  function generateSyntheticFlights(n = 220) {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const isMil = Math.random() < 0.06;
+      out.push({
+        icao24: Math.random().toString(16).slice(2, 8).toUpperCase(),
+        callsign: (isMil ? 'RCH' : 'UAL') + Math.floor(Math.random() * 9999),
+        lon: -180 + Math.random() * 360,
+        lat: -60 + Math.random() * 120,
+        alt: 8_000 + Math.random() * 4_000,
+        velocity: 200 + Math.random() * 100,
+        heading: Math.random() * 360,
+        military: isMil,
+      });
+    }
+    return out;
+  }
+
+  function clear() {
+    entities.forEach(e => viewer.entities.remove(e));
+    entities = [];
+  }
+
+  function render(flights) {
+    clear();
+    flights.forEach(f => {
+      if (mode === 'commercial' && f.military) return;
+      if (mode === 'military' && !f.military) return;
+
+      const color = f.military
+        ? Cesium.Color.fromCssColorString('#ff8a3c')
+        : Cesium.Color.fromCssColorString('#6effb5');
+
+      const ent = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(f.lon, f.lat, f.alt || 10000),
+        point: {
+          pixelSize: f.military ? 7 : 5,
+          color,
+          outlineColor: color.withAlpha(0.3),
+          outlineWidth: 2,
+        },
+      });
+      ent._meta = {
+        label: `${f.military ? 'MIL' : 'CIV'} ${f.callsign} // ${f.icao24}`,
+        type: 'aircraft',
+      };
+      entities.push(ent);
+    });
+    State.entityCount.aviation = entities.length;
+    updateEntityCount();
+  }
+
+  async function refresh() {
+    if (!visible) return;
+    let flights;
+    try {
+      flights = await fetchOpenSky();
+      log.info(`OPENSKY :: ${flights.length} TRACKS`);
+    } catch (err) {
+      console.warn('[OpenSky] using synthetic data:', err.message);
+      flights = generateSyntheticFlights();
+      log.warn('OPENSKY UNREACHABLE — SIMULATED FEED');
+    }
+    render(flights);
+  }
+
+  return {
+    async setVisible(v) {
+      visible = v;
+      if (v) {
+        await refresh();
+        pollHandle = setInterval(refresh, 30_000);
+      } else {
+        clearInterval(pollHandle);
+        clear();
+        State.entityCount.aviation = 0;
+        updateEntityCount();
+      }
+    },
+    setMode(m) { mode = m; if (visible) refresh(); },
+    count() { return entities.length; },
+  };
+})();
+
+/* ==========================================================
+   WORLDVIEW :: STREET TRAFFIC SIMULATION
+   ==========================================================
+   Queries OpenStreetMap road geometry through the Overpass API,
+   then animates particles along the road graph.
+
+   Sequential loading: highways first (motorway/trunk/primary),
+   then arterial (secondary/tertiary), to avoid stalling the renderer.
+   ========================================================== */
+
+const TrafficLayer = (() => {
+  let primitives = [];
+  let particleEnts = [];
+  let visible = false;
+  let animFrame = null;
+  let particles = [];
+
+  const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+
+  async function fetchRoads(bbox, classes) {
+    // bbox = [s, w, n, e]
+    const filter = classes.map(c => `way["highway"="${c}"](${bbox.join(',')});`).join('');
+    const query = `[out:json][timeout:25];(${filter});out geom;`;
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    try {
+      const res = await fetch(OVERPASS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: query,
+        signal: ctrl.signal,
+      });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data.elements || [];
+    } catch (e) {
+      clearTimeout(t);
+      throw e;
+    }
+  }
+
+  function spawnParticlesFromWays(ways, density) {
+    ways.forEach(way => {
+      if (!way.geometry || way.geometry.length < 2) return;
+      const path = way.geometry.map(p =>
+        Cesium.Cartesian3.fromDegrees(p.lon, p.lat, 5)
+      );
+      const segLengths = [];
+      let total = 0;
+      for (let i = 0; i < path.length - 1; i++) {
+        const d = Cesium.Cartesian3.distance(path[i], path[i + 1]);
+        segLengths.push(d);
+        total += d;
+      }
+      const numParticles = Math.max(1, Math.floor(total / density));
+      for (let i = 0; i < numParticles; i++) {
+        particles.push({
+          path, segLengths, total,
+          progress: Math.random(),
+          speed: 0.05 + Math.random() * 0.1, // fraction of path / sec
+          direction: Math.random() > 0.5 ? 1 : -1,
+        });
+      }
+    });
+    rebuildParticleEntities();
+  }
+
+  function pointAlongPath(p, fraction) {
+    const dist = fraction * p.total;
+    let acc = 0;
+    for (let i = 0; i < p.segLengths.length; i++) {
+      if (acc + p.segLengths[i] >= dist) {
+        const segFrac = (dist - acc) / p.segLengths[i];
+        return Cesium.Cartesian3.lerp(p.path[i], p.path[i + 1], segFrac, new Cesium.Cartesian3());
+      }
+      acc += p.segLengths[i];
+    }
+    return p.path[p.path.length - 1];
+  }
+
+  function rebuildParticleEntities() {
+    particleEnts.forEach(e => viewer.entities.remove(e));
+    particleEnts = [];
+    particles.forEach((p, i) => {
+      const ent = viewer.entities.add({
+        position: new Cesium.CallbackProperty(() => {
+          return pointAlongPath(p, p.progress);
+        }, false),
+        point: {
+          pixelSize: 3,
+          color: Cesium.Color.fromCssColorString('#ffd166').withAlpha(0.85),
+        },
+      });
+      particleEnts.push(ent);
+    });
+    State.entityCount.traffic = particleEnts.length;
+    updateEntityCount();
+  }
+
+  function startAnimationLoop() {
+    let last = performance.now();
+    const step = (now) => {
+      const dt = (now - last) / 1000;
+      last = now;
+      particles.forEach(p => {
+        p.progress += p.speed * p.direction * dt;
+        if (p.progress > 1) p.progress = 0;
+        if (p.progress < 0) p.progress = 1;
+      });
+      animFrame = requestAnimationFrame(step);
+    };
+    animFrame = requestAnimationFrame(step);
+  }
+
+  function stopAnimation() {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrame = null;
+  }
+
+  function clearAll() {
+    particleEnts.forEach(e => viewer.entities.remove(e));
+    particleEnts = [];
+    particles = [];
+    State.entityCount.traffic = 0;
+    updateEntityCount();
+  }
+
+  function getCurrentBbox() {
+    const rect = viewer.camera.computeViewRectangle();
+    if (!rect) return null;
+    const s = Cesium.Math.toDegrees(rect.south);
+    const w = Cesium.Math.toDegrees(rect.west);
+    const n = Cesium.Math.toDegrees(rect.north);
+    const e = Cesium.Math.toDegrees(rect.east);
+    // Cap to a sensible size to avoid massive Overpass queries
+    const span = Math.max(n - s, e - w);
+    if (span > 0.5) return null; // > ~50km — too zoomed out
+    return [s, w, n, e];
+  }
+
+  // Sequential load: highways first, then arterials.
+  async function load() {
+    clearAll();
+    const bbox = getCurrentBbox();
+    if (!bbox) {
+      log.warn('ZOOM IN TO LOAD TRAFFIC');
+      return;
+    }
+
+    log.info('TRAFFIC :: LOADING HIGHWAYS');
+    try {
+      const highways = await fetchRoads(bbox,
+        ['motorway', 'trunk', 'primary']);
+      spawnParticlesFromWays(highways, 80); // sparser on highways
+      log.info(`TRAFFIC :: ${highways.length} HIGHWAYS LOADED`);
+    } catch (err) {
+      console.warn('[Overpass highways] failed:', err.message);
+      log.error('OVERPASS UNREACHABLE');
+      generateSyntheticTrafficForBbox(bbox);
+      return;
+    }
+
+    // Wait one frame so highways render before we hit the API again.
+    await new Promise(r => setTimeout(r, 800));
+    if (!visible) return;
+
+    log.info('TRAFFIC :: LOADING ARTERIALS');
+    try {
+      const arterials = await fetchRoads(bbox,
+        ['secondary', 'tertiary']);
+      spawnParticlesFromWays(arterials, 50);
+      log.info(`TRAFFIC :: ${arterials.length} ARTERIALS LOADED`);
+    } catch (err) {
+      console.warn('[Overpass arterials] failed:', err.message);
+    }
+  }
+
+  // Fallback: invent a road grid when Overpass is unreachable
+  function generateSyntheticTrafficForBbox(bbox) {
+    const [s, w, n, e] = bbox;
+    const fakeWays = [];
+    for (let i = 0; i < 12; i++) {
+      const lat = s + (n - s) * (i / 11);
+      const geometry = [];
+      for (let j = 0; j < 10; j++) {
+        geometry.push({
+          lat: lat + (Math.random() - 0.5) * 0.005,
+          lon: w + (e - w) * (j / 9),
+        });
+      }
+      fakeWays.push({ geometry });
+    }
+    for (let i = 0; i < 12; i++) {
+      const lon = w + (e - w) * (i / 11);
+      const geometry = [];
+      for (let j = 0; j < 10; j++) {
+        geometry.push({
+          lat: s + (n - s) * (j / 9),
+          lon: lon + (Math.random() - 0.5) * 0.005,
+        });
+      }
+      fakeWays.push({ geometry });
+    }
+    spawnParticlesFromWays(fakeWays, 100);
+    log.warn('TRAFFIC :: SIMULATED GRID');
+  }
+
+  return {
+    async setVisible(v) {
+      visible = v;
+      if (v) {
+        await load();
+        startAnimationLoop();
+      } else {
+        stopAnimation();
+        clearAll();
+      }
+    },
+    isVisible() { return visible; },
+    reload() { if (visible) load(); },
+  };
+})();
+
+/* ==========================================================
+   WORLDVIEW :: CCTV PROJECTION
+   ========================================================== */
+
+const CctvLayer = (() => {
+  let pinEntities = [];
+
+  function buildPins() {
+    CCTV_FEEDS.forEach(feed => {
+      const ent = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(feed.pos[0], feed.pos[1], feed.pos[2]),
+        billboard: {
+          image: makePinSvg('#ff3b5c'),
+          scale: 1.0,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        },
+        label: {
+          text: feed.label,
+          font: '10px JetBrains Mono',
+          fillColor: Cesium.Color.fromCssColorString('#ff3b5c'),
+          showBackground: true,
+          backgroundColor: Cesium.Color.fromCssColorString('#000').withAlpha(0.7),
+          pixelOffset: new Cesium.Cartesian2(0, -42),
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        },
+      });
+      ent._meta = { label: feed.label, type: 'cctv', feed };
+      pinEntities.push(ent);
+    });
+  }
+
+  function makePinSvg(color) {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="28" viewBox="0 0 20 28">
+      <path d="M10 0 L20 12 L14 12 L14 28 L6 28 L6 12 L0 12 Z" fill="${color}" opacity="0.9"/>
+    </svg>`;
+    return 'data:image/svg+xml;base64,' + btoa(svg);
+  }
+
+  function openFeed(feed) {
+    const win = $('#cctvWindow');
+    const feedBox = $('#cctvFeed');
+    feedBox.innerHTML = '';
+
+    if (feed.feedUrl && feed.feedUrl.includes('youtube.com/embed')) {
+      const iframe = document.createElement('iframe');
+      iframe.src = feed.feedUrl;
+      iframe.allow = 'autoplay; encrypted-media';
+      feedBox.appendChild(iframe);
+    } else if (feed.feedUrl) {
+      // Try as image (MJPEG) first
+      const img = new Image();
+      img.onerror = () => {
+        feedBox.innerHTML = '<div class="placeholder">SIGNAL LOST</div>';
+      };
+      img.src = feed.feedUrl;
+      feedBox.appendChild(img);
+    } else {
+      feedBox.innerHTML = '<div class="placeholder">NO SIGNAL</div>';
+    }
+
+    $('#cctvLabel').textContent = feed.label;
+    $('#cctvMeta').textContent =
+      `${feed.pos[1].toFixed(4)}°, ${feed.pos[0].toFixed(4)}° // CAM-${feed.id.toUpperCase()}`;
+    win.classList.add('active');
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(feed.pos[0], feed.pos[1], 600),
+      orientation: {
+        heading: 0,
+        pitch: Cesium.Math.toRadians(-40),
+        roll: 0,
+      },
+      duration: 2.0,
+    });
+  }
+
+  function closeFeed() {
+    $('#cctvWindow').classList.remove('active');
+    $('#cctvFeed').innerHTML = '';
+  }
+
+  return { buildPins, openFeed, closeFeed,
+           pins: () => pinEntities };
+})();
+
+/* ==========================================================
+   WORLDVIEW :: APP STATE & WIRING
+   ========================================================== */
+
+const State = {
+  shader: 'none',
+  satMode: 'sparse',
+  aviMode: 'all',
+  layers: { satellites: false, aviation: false, traffic: false },
+  entityCount: { satellites: 0, aviation: 0, traffic: 0 },
+};
+
+function updateEntityCount() {
+  const total = State.entityCount.satellites
+              + State.entityCount.aviation
+              + State.entityCount.traffic;
+  $('#entityVal').textContent = total.toLocaleString();
+}
+
+function buildSidebar() {
+  // Camera presets
+  const grid = $('#presetGrid');
+  CAMERA_PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.innerHTML = `<span>${p.name}</span><span class="btn-dot"></span>`;
+    b.onclick = () => {
+      $$('#presetGrid .btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      flyToPreset(p);
+    };
+    grid.appendChild(b);
+  });
+
+  // Shader buttons
+  $$('.shader-btn').forEach(b => {
+    b.onclick = () => {
+      State.shader = b.dataset.shader;
+      setShader(State.shader);
+    };
+  });
+  // Default 'none' active
+  $$('.shader-btn').find = null;
+  $$('.shader-btn').forEach(b => {
+    if (b.dataset.shader === 'none') b.classList.add('active');
+  });
+
+  // Layer toggles
+  $$('.toggle-row').forEach(row => {
+    row.onclick = async () => {
+      const layer = row.dataset.layer;
+      State.layers[layer] = !State.layers[layer];
+      row.classList.toggle('on', State.layers[layer]);
+
+      if (layer === 'satellites') SatelliteLayer.setVisible(State.layers[layer]);
+      if (layer === 'aviation')   await AviationLayer.setVisible(State.layers[layer]);
+      if (layer === 'traffic')    await TrafficLayer.setVisible(State.layers[layer]);
+    };
+  });
+
+  // Filter pills
+  $$('#satFilter .pill').forEach(p => {
+    p.onclick = () => {
+      $$('#satFilter .pill').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      State.satMode = p.dataset.satMode;
+      SatelliteLayer.setMode(State.satMode);
+    };
+  });
+  $$('#aviFilter .pill').forEach(p => {
+    p.onclick = () => {
+      $$('#aviFilter .pill').forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      State.aviMode = p.dataset.aviMode;
+      AviationLayer.setMode(State.aviMode);
+    };
+  });
+
+  // CCTV grid
+  const cctvGrid = $('#cctvGrid');
+  CCTV_FEEDS.forEach(feed => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.innerHTML = `<span>${feed.label}</span><span class="btn-dot" style="background:#ff3b5c;box-shadow:0 0 6px #ff3b5c"></span>`;
+    b.onclick = () => CctvLayer.openFeed(feed);
+    cctvGrid.appendChild(b);
+  });
+  $('#cctvCount').textContent = CCTV_FEEDS.length.toString().padStart(2, '0');
+
+  $('#cctvClose').onclick = () => CctvLayer.closeFeed();
+}
+
+/* ==========================================================
+   WORLDVIEW :: TELEMETRY / FPS / CLOCK
+   ========================================================== */
+
+function startTelemetryLoop() {
+  let frames = 0, lastFpsUpdate = performance.now();
+
+  function tick() {
+    frames++;
+    const now = performance.now();
+    if (now - lastFpsUpdate > 1000) {
+      const fps = Math.round(frames * 1000 / (now - lastFpsUpdate));
+      $('#fpsVal').textContent = fps;
+      frames = 0;
+      lastFpsUpdate = now;
+    }
+
+    // Clock
+    const d = new Date();
+    const t = `${d.getUTCHours().toString().padStart(2,'0')}:${d.getUTCMinutes().toString().padStart(2,'0')}:${d.getUTCSeconds().toString().padStart(2,'0')}`;
+    $('#clock').textContent = t;
+
+    // Camera readout
+    if (viewer && viewer.camera) {
+      const c = viewer.camera.positionCartographic;
+      const lat = Cesium.Math.toDegrees(c.latitude);
+      const lon = Cesium.Math.toDegrees(c.longitude);
+      const alt = c.height;
+      $('#camLat').textContent = lat.toFixed(3);
+      $('#camLon').textContent = lon.toFixed(3);
+      $('#camAlt').textContent = alt > 1000
+        ? `${(alt/1000).toFixed(0)} km`
+        : `${alt.toFixed(0)} m`;
+      $('#camHead').textContent =
+        `${(Cesium.Math.toDegrees(viewer.camera.heading) % 360).toFixed(0).padStart(3,'0')}°`;
+
+      $('#coordTicker').innerHTML =
+        `<span class="v">${lat >= 0 ? 'N' : 'S'} ${Math.abs(lat).toFixed(4)}°</span> // <span class="v">${lon >= 0 ? 'E' : 'W'} ${Math.abs(lon).toFixed(4)}°</span>`;
+    }
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ==========================================================
+   WORLDVIEW :: BOOT
+   ========================================================== */
+
+(async function boot() {
+  try {
+    await initGlobe();
+    CctvLayer.buildPins();
+    buildSidebar();
+    startTelemetryLoop();
+
+    // Brief opening flight
+    setTimeout(() => {
+      flyToPreset(CAMERA_PRESETS[0]);
+      $$('#presetGrid .btn')[0].classList.add('active');
+    }, 600);
+
+    setTimeout(hideLoader, 1200);
+    log.info('WORLDVIEW :: SYSTEMS NOMINAL');
+  } catch (err) {
+    console.error('[Boot]', err);
+    setLoaderMsg('BOOT FAILED — CHECK CONSOLE');
+    log.error(`BOOT FAILURE: ${err.message}`);
+  }
+})();
+
+// Expose for debugging
+window.WorldView = {
+  viewer: () => viewer,
+  presets: CAMERA_PRESETS,
+  flyTo: flyToPreset,
+  layers: { SatelliteLayer, AviationLayer, TrafficLayer, CctvLayer },
+  state: State,
+};
+</script>
+</body>
+</html>
